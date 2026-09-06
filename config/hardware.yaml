@@ -1,0 +1,72 @@
+# 硬件配置文件
+# 所有模块共用此配置，修改一处全局生效
+
+# ===== 地平线AI板配置 =====
+horizon:
+  board: "RDK X3"              # 板子型号: RDK X3 / RDK X5 / J5 / J6
+  ip: "192.168.1.10"           # 板子IP地址
+  user: "root"                  # SSH用户名
+  model_input_size: 416         # 模型输入尺寸
+  model_type: "yolov8n"         # 模型类型
+
+# ===== 摄像头配置 =====
+camera:
+  device: "/dev/video0"         # 摄像头设备路径
+  width: 640                     # 采集宽度
+  height: 480                    # 采集高度
+  fps: 30                        # 目标帧率
+  format: "MJPEG"                # 采集格式: MJPEG / YUYV
+  focal_length: 800              # 相机焦距(像素)，用于单目测距，需标定
+
+# ===== CAN总线配置 =====
+can:
+  interface: "can0"              # CAN接口名
+  bitrate: 500000                # 波特率: 500000 = 500kbps
+  # CAN ID定义
+  ids:
+    control: 0x100               # AI板→STM32: 控制指令
+    status: 0x101                # STM32→AI板: 状态反馈
+    heartbeat_ai: 0x102          # AI板→STM32: 心跳
+    heartbeat_stm32: 0x103       # STM32→AI板: 心跳
+  heartbeat_timeout_ms: 500       # 心跳超时时间(毫秒)
+
+# ===== STM32配置 =====
+stm32:
+  chip: "STM32F407"              # 芯片型号
+  clock: 168000000                # 系统时钟(Hz)
+  # 引脚定义
+  pins:
+    can_tx: "PA12"                # CAN发送引脚
+    can_rx: "PA11"                # CAN接收引脚
+    motor_pwm: "PA0"              # 电机PWM(TIM2_CH1)
+    motor_dir1: "PB0"             # 电机方向1
+    motor_dir2: "PB1"             # 电机方向2
+    servo_pwm: "PA1"              # 舵机PWM(TIM2_CH2)
+    encoder_a: "PA6"               # 编码器A相(TIM3_CH1)
+    encoder_b: "PA7"               # 编码器B相(TIM3_CH2)
+
+# ===== 电机配置 =====
+motor:
+  pwm_freq: 20000                  # PWM频率(Hz)
+  max_pwm: 1000                    # 最大PWM占空比
+  # PID参数（需根据实际电机调试）
+  pid:
+    kp: 2.0
+    ki: 0.5
+    kd: 0.1
+  control_period_ms: 20            # 控制周期(毫秒)
+
+# ===== 舵机配置（阿克曼转向） =====
+servo:
+  pwm_freq: 50                     # PWM频率(Hz)，标准舵机50Hz
+  center_pulse: 1500               # 中位脉冲宽度(us)
+  max_left_pulse: 2000             # 最大左转脉冲(us)
+  max_right_pulse: 1000            # 最大右转脉冲(us)
+  max_angle: 30                     # 最大转角(度)
+
+# ===== AEB配置 =====
+aeb:
+  safe_distance: 2.0                # 安全距离(米)
+  danger_distance: 1.0              # 危险距离(米)
+  hysteresis: 0.3                   # 迟滞(米)，防止边界抖动
+  warn_speed_scale: 0.5             # 预警时限速比例

@@ -1,0 +1,24 @@
+# 地平线模型转换配置文件示例
+# 复制为 yolov8n_config.yaml 后修改路径
+# 注意：具体字段名以你使用的OpenExplorer版本文档为准
+
+model:
+  model_name: yolov8n_car          # 模型名称
+  model_type: onnx                  # 模型类型
+  onnx_model: ../../01_train/best.onnx  # ONNX模型路径
+
+quantize:
+  input_type: rgb                    # 输入数据类型: rgb/bgr
+  input_layout: NCHW                 # 输入布局: NCHW/NHWC
+  cal_data_dir: ../calib_data        # 量化校准数据集路径（200~500张图片）
+  cal_data_type: img                 # 校准数据类型: img/npy
+  # YOLO预处理是 /255，所以 mean=0, scale=1/255
+  mean: [0.0, 0.0, 0.0]
+  scale: [0.00392157, 0.00392157, 0.00392157]
+  quantize_type: int8                # 量化类型: int8/fp16/fp32
+  per_channel: true                  # per-channel量化（精度通常更好）
+
+compile:
+  output_dir: ../output_int8         # 输出目录
+  optimize: sdk_optimize             # 优化级别
+  board: x3                          # 目标板型: x3/j5/j6
