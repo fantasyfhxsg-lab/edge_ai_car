@@ -1,0 +1,14 @@
+# 数据集配置文件示例
+# 复制为 data.yaml 后修改路径和类别
+
+path: ../dataset                    # 数据集根目录
+train: images/train                  # 训练集图片(相对path)
+val: images/val                      # 验证集图片
+test: images/test                    # 测试集图片(可选)
+
+# 类别数和名称（根据你的实际情况修改）
+nc: 3
+names:
+  0: person                           # 行人
+  1: car                              # 车辆
+  2: cone                             # 锥桶/障碍物

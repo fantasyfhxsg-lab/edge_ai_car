@@ -1,0 +1,66 @@
+# 边缘AI部署开发环境
+# 包含：地平线工具链 + STM32交叉编译 + YOLO训练 + CAN工具
+# 构建：docker build -t edge-ai-dev:v1.0 -f Dockerfile.dev .
+
+# ===== 基础镜像：地平线官方工具链镜像 =====
+# 根据你的板子型号选择：
+#   X3/J5 CPU版: openexplorer/ai_toolchain_ubuntu_20_x3j5_cpu:v1.2.8
+#   X3/J5 GPU版: openexplorer/ai_toolchain_ubuntu_20_x3j5_gpu:v1.2.8
+#   J6 CPU版:    openexplorer/ai_toolchain_ubuntu_22_j6_cpu:v3.8.1
+FROM openexplorer/ai_toolchain_ubuntu_20_x3j5_cpu:v1.2.8
+
+# 避免apt交互式询问
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
+
+# ===== 安装系统依赖 =====
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # STM32交叉编译工具链
+    gcc-arm-none-eabi \
+    gdb-multiarch \
+    # 构建工具
+    cmake \
+    make \
+    ninja-build \
+    build-essential \
+    # 版本控制与网络
+    git \
+    wget \
+    curl \
+    # 编辑器与工具
+    vim \
+    tree \
+    tmux \
+    # Python
+    python3 \
+    python3-pip \
+    python3-dev \
+    # CAN总线工具
+    can-utils \
+    # 图像处理库
+    libopencv-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===== 安装Python依赖 =====
+RUN pip3 install --no-cache-dir \
+    ultralytics \
+    opencv-python \
+    numpy \
+    onnx \
+    onnxruntime \
+    onnxsim \
+    python-can \
+    pycocotools \
+    pytest \
+    pytest-html \
+    matplotlib \
+    tqdm \
+    pyyaml
+
+# ===== 验证工具链 =====
+RUN arm-none-eabi-gcc --version && \
+    python3 -c "import ultralytics; print(f'ultralytics {ultralytics.__version__}')"
+
+WORKDIR /workspace
+CMD ["/bin/bash"]
