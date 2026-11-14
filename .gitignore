@@ -35,3 +35,100 @@ calib_data/
 # 系统
 .DS_Store
 Thumbs.db
+
+# 补充
+*.py.class
+env/
+.env
+pip-wheel-metadata/
+models/*.pth
+models/*.engine
+models/*.trt
+models/*.rknn
+models/*.xmodel
+out/
+cmake-build-*/
+*.obj
+*.so.*
+*.a
+*.lib
+*.dll
+*.elf
+*.hex
+*.map
+record/
+*.rosbag
+*.pcd
+*.pcap
+*.pcapng
+*.csv
+*.txt.record
+*.cdfx
+*.ldf
+*.blf
+*.asc
+*.mdf
+*.mf4
+*~
+*.bak
+docker/build/
+mnt/
+tmp/
+temp/
+*.tmp
+perf/
+dump/
+*.dump
+*.core
+core.*
+local_config.py
+local_params.yaml
+secret.yaml
+
+# ============================================================
+# 第三方 SDK / 开发包（体积过大，不入库；自行从官方渠道下载）
+# ============================================================
+horizon_xj3_open_explorer*/
+horizon_xj3_open_explorer_v2.6.6-py38_20240717/
+
+# ============================================================
+# 压缩包 / 安装包（GitHub 单文件 100MB 硬限制）
+# ============================================================
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+*.rar
+*.whl
+# 例外：几十 KB 的源码备份保留在仓库中
+!others/04_stm32_backup_*.tar.gz
+
+# ============================================================
+# 模型 / 权重（二进制大文件；本机 git-lfs 不可用，一律忽略）
+# ============================================================
+*.onnx
+*.pt
+*.pth
+*.hbm
+*.hbir
+*.hb
+*.xmodel
+*.rknn
+*.engine
+*.trt
+!models/.gitkeep
+
+# ============================================================
+# 预编译库 / 调试符号
+# ============================================================
+*.gdb
+*.dylib
+
+# ============================================================
+# clangd / 编辑器索引（机器生成，不入库）
+# ============================================================
+.cache/
+.clangd/
+compile_commands.json
+*.idx
