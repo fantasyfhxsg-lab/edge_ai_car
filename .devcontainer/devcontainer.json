@@ -1,0 +1,42 @@
+{
+  "name": "STM32 Dev",
+  "image": "autoedge-toolchain:v2",
+  "containerEnv": {
+    "http_proxy": "http://172.23.144.1:7897",
+    "https_proxy": "http://172.23.144.1:7897"
+  },
+  "privileged": true,
+  "runArgs": [
+    "--gpus", "all",
+    "--cpus=1.5",
+    "--shm-size=2g",
+    "--memory=4g",
+    "--memory-swap=6g"
+  ],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace2,type=bind",
+  "workspaceFolder": "/workspace2",
+  "mounts": [
+    "type=bind,source=/dev/bus/usb,target=/dev/bus/usb"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "marus25.cortex-debug",
+        "mcu-debug.debug-tracker-vscode",
+        "mcu-debug.memory-view",
+        "marus25.peripheral-viewer",
+        "marus25.rtos-view",
+        "ms-vscode.vscode-serial-monitor",
+        "ms-vscode.makefile-tools",
+        "saoudrizwan.claude-dev"
+      ],
+      "settings": {
+        "clangd.path": "/usr/bin/clangd"
+      }
+    }
+  },
+  "remoteUser": "root"
+}

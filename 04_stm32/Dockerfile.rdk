@@ -1,0 +1,13 @@
+# 地平线工具链镜像封装+stm32
+# docker build -f ./Dockerfile.rdk -t autoedge-toolchain:v2 .
+
+FROM autoedge-toolchain:v1
+WORKDIR /workspace2
+
+# 安装clangd/bear
+RUN apt-get update && apt-get install -y \
+    bear \
+    clangd \
+    && rm -rf /var/lib/apt/lists/*
+
+CMD ["bash"]

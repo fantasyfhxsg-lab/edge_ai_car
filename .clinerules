@@ -1,0 +1,125 @@
+# AEB 智能小车 · STM32 端 Cline 规则（最终版）
+
+> 工作区根：**/home/fantasy/workspace2/edge_ai_car**。Cline 只允许查阅和修改 **/home/fantasy/workspace2/edge_ai_car/04_stm32**，其它目录一律不读、不改。
+> 当前阶段两个目标：① **CAN 联调，打通 AEB**；② **按 AUTOSAR CP 四层框架核对并补全代码**。
+
+## 1. 硬件事实（已调通，相关初始化冻结）
+- STM32F407ZGT6（M144Z-M4），SYSCLK 168MHz（外部 8MHz 晶振 HSE + PLL），APB1 = 42MHz
+- CAN1 = PA11(RX)/PA12(TX)，外接 TJA1050（**VCC 必须 5V**），500kbps，标准帧，DLC≤8
+- 联调抓包：Makerbase CANable 2.0（CANH/CANL/GND 三线，GND 显式共地；总线两端各 120Ω 终端）
+- 调试口 USART1 115200 8N1（板载 CH340）；LED0=PF9 低电平点亮
+- 用 CAN1 时禁止插板载 USB SLAVE 口（PA11/12 与 OTG_FS 冲突）
+- 电机/舵机/编码器/USART/时钟已调通：**冻结。不重排引脚、不改外设配置**
+
+## 2. 构建与烧写（只在本目录）
+```bash
+cd /home/fantasy/workspace2/edge_ai_car/04_stm32
+make          # 验收线：0 警告 0 错误（-Wall -Wextra）
+make flash    # openocd 烧写；make flash2 = st-flash；容器环境按 run_toolchain.sh
+```
+
+## 3. 代码约束（防破坏红线）
+- 寄存器级裸机，**禁止引入 HAL/CubeMX 代码**
+- 业务代码只调抽象接口，寄存器位操作只在驱动层/平台层内部
+- 类型沿用 AUTOSAR 风格：`uint8/sint16/uint32/boolean`（platform.h）
+- 任务函数（Task_10ms 等）内**禁止 delay_ms 阻塞**（历史事故：阻塞致 CAN 丢帧）
+- `uart_printf` 不做格式化（nano.specs 下 vsnprintf 会 HardFault），打数字用自写 itoa
+- 不臆造寄存器地址/时序数值，拿不准查 `Core/Inc/stm32f407_regs.h` 或参考手册
+- 新增全局共享变量必须 `volatile`
+
+## 4. AUTOSAR CP 四层框架（目标二：按此核对并补全）
+自上而下四层，业务逻辑不碰寄存器，后期迁 AUTOSAR CP 只改驱动层内部、接口不变：
+
+| 层 | 职责 | 典型文件（以 /home/fantasy/workspace2/edge_ai_car/04_stm32 实际为准） |
+|---|---|---|
+| 应用层 | AEB 业务流程：解析 0x123 制动等级→执行/解除制动；0x125 车速上报来源 | main.c 应用段 |
+| 调度层 | Task_10ms/20ms/100ms 非阻塞时间片轮询 | main.c 调度段 |
+| 驱动抽象层 | can_driver / motor_driver / servo_driver / encoder_driver：对外抽象接口，内部寄存器操作 | Inc/*.h + Src/*.c |
+| 平台层 | 时钟、SysTick/millis、uart、GPIO 基础抽象（AUTOSAR 里 MCAL 思想） | platform.h / platform.c |
+
+规则：
+1. 应用层/调度层**禁止直接操作寄存器**，只调驱动抽象接口
+2. 新增 AEB 逻辑（制动映射、车速换算、失效保护）必须落在应用层；CAN 收发与解析在 can_driver 抽象接口内
+3. 补全以"缺层补层、错层纠正"为原则，**禁止为像 AUTOSAR 而重排引脚或改外设初始化**
+4. 动结构先出"分层方案 + 涉及文件清单"给用户确认，再改
+
+## 5. CAN 协议（与板端 clinerules 一一对应，禁止单边改动）
+
+通用：标准帧（11 位 ID）、500kbps、数据段固定 8 字节、未用字节填 0、多字节字段小端（uint16 低字节在前）。帧类型只用数据帧（RTR=0）。
+协议版本编译期宏二选一（互斥，同一时间仅一个为 1），默认 heartbeat_v1，必须与板端 can.protocol 一致：
+CAN_PROTOCOL_HEARTBEAT_V1 = 1（默认）
+CAN_PROTOCOL_BRAKE_V2 = 0
+
+### heartbeat_v1（默认，板端 can.protocol=heartbeat_v1）
+
+| ID    | 方向       | 周期                               | 内容                                                                                                                    |
+| ----- | ---------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 0x100 | 板端→STM32 | 50ms                               | byte0=命令 0x00 停车 / 0x01 巡航 / 0x02 预警 / 0x03 制动；byte1=距离 cm；byte2=置信度；byte3=计数 0~255 递增；byte4-7=0 |
+| 0x101 | STM32→板端 | 200ms                              | byte0=0xAA、byte1=seq 递增；恒发（握手请求+STM 心跳，无次数上限、无阶段停发）                                           |
+| 0x102 | 板端→STM32 | 应答：每帧 0x101 即回；心跳：200ms | byte0=0x55、byte1=0x01 应答 / 0x02 心跳、byte2=seq 递增；DLC=8；应答与心跳共用同一 seq 计数器，每发一帧 +1              |
+
+STM32 状态机：
+
+STATIC（上电/复位，PWM=0）：
+
+- 周期发 0x101@200ms；忽略 0x100（不执行、不判活）
+- 有效握手应答 = DLC=8 && byte0=0x55 && byte1=0x01 && byte2 递增；累计 2 帧 → CRUISE
+- 60s 未完成握手 → LOCK
+
+CRUISE（唯一可驱动状态）：
+
+- 周期发 0x101
+- 有效 0x100 = DLC=8 && byte0∈{0x00,0x01,0x02,0x03} && byte3 与上帧不同 → 按 byte0 执行：0x00 PWM=0 停车 / 0x01 巡航（软启动，PWM 限幅爬升，禁止瞬间全速）/ 0x02 减速 + LED 慢闪 1Hz / 0x03 刹停 + LED 快闪 5Hz，并刷新超时时间戳
+- 无效帧（byte3 相同或 byte0 非法）→ 丢弃，不刷新超时
+- 0x100 超时 200ms（4×50ms）→ 本地刹停 → HOLD（此判定只看 0x100，不看 0x102）
+
+HOLD（PWM=0 保持刹停）：
+
+- 周期发 0x101 自动重握手
+- 收有效 0x100（DLC=8 && byte3 变化）→ 回 CRUISE，按该帧 byte0 执行
+- 60s 未恢复 → LOCK
+
+LOCK（PWM=0，LED 常亮，串口打印 LOCK，停发 0x101）：需复位恢复
+
+判活铁律：
+
+- 判活只看 0x100：超时即刹停进 HOLD，0x102 在不在都一样
+- 0x102 仅 STATIC 阶段用于握手判定；CRUISE/HOLD 中只作日志，不参与任何判活、恢复、超时
+- 解除/退出由板端发 0x00 停车；本端收到 0x00 保持 PWM=0
+- 本协议不定义 0x125
+
+### brake_v2（legacy，板端 can.protocol=brake_v2）
+| ID | 方向 | 内容 |
+|---|---|---|
+| 0x123 | 板端→STM32 | 制动指令：byte0 = 0正常 / 1预警 / 2部分制动 / 3紧急制动；byte1-7 保留填 0 |
+| 0x124 | 板端→STM32 | 障碍物距离：byte0-1 = uint16 小端 cm；0xFFFF = 无有效目标；byte2-7 填 0 |
+| 0x125 | STM32→板端 | 当前车速：byte0-1 = uint16 小端 km/h；0xFFFF = 车速无效占位；byte2-7 填 0 |
+STM32 端行为：
+- 收 0x123：level 3 → 立即 `Motor_EmergencyBrake()`；2 → 部分制动（减速，实现方案与阈值先确认）；1 → 预警（LED/日志，不制动）；0 → 解除制动
+- 收 0x124：记录并打印距离（联调观察用），不直接驱动动作
+- 周期发 0x125：编码器测速换算 km/h（cm/s × 0.036），发送周期必须 < 板端 recv_timeout（100ms），建议 20ms；无有效速度填 0xFFFF
+- 失效保护（刹车优先、可恢复）：收到过非 0 等级后，若 0x123 超时丢失，**保持制动不自动解除**；只有收到等级 0 才解除
+
+
+## 6. CAN 调试方法（对本 Cline 的要求）
+1. 分层验证，不可跳步：① 回环自测（SILM）→ ② Normal + CANable 抓包 → ③ 与板端 AEB 联调
+2. 联调前先核对协议版本：板端 can.protocol 与 STM32 编译宏选中的版本必须一致（heartbeat_v1 / brake_v2），不一致先不联调
+3. 抓包按版本核对：heartbeat_v1 看 0x101 周期发出 + 0x102 应答与 0x100 等级时序；brake_v2 看 0x123/0x124 收到 + 0x125 周期发出
+4. 每个改动先讲"改前现象 → 改动点 → 改后预期"，再动手；不确定先问
+5. "收不到帧"排查顺序：过滤器 → 轮询接收时机 → 串口打印（uart_printf 限制）→ 硬件（RXD→PA11、共地、终端电阻、波特率）
+6. 错误监控：用 `Can_GetTxErrorCount/Can_GetRxErrorCount/Can_IsBusOff` 打印；Bus-Off 必须有恢复逻辑
+7. 若必须改协议（ID/字节/周期），先列方案给用户确认（需同步板端，板端代码不由你修改）
+8. 交付前 `make clean && make` 0 警告 0 错误，并给出烧写命令
+
+
+## 7. 交付前自查清单
+- [ ] 只改了 `/home/fantasy/workspace2/edge_ai_car/04_stm32` 内文件
+- [ ] 未动时钟/外设初始化，未引入 HAL
+- [ ] CAN 协议与板端一致（0x123/0x124/0x125 的 ID、字节布局、周期）
+- [ ] 代码落在 AUTOSAR CP 对应层（应用层不碰寄存器）
+- [ ] 0 警告 0 错误；无阻塞延时；共享变量 volatile
+- [ ] 0x123→制动、0x125→车速上报、刹车优先失效保护 三条链路成立
+
+# 文件读取限制：禁止自动遍历全部源码目录，禁止读取 .cache .clangd build
+IGNORE_DIRS: [".cache", ".clangd", "build"]
+MAX_FILE_SCAN: 8
